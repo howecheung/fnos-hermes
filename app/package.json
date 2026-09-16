@@ -1,0 +1,6 @@
+{
+  "name": "fnos-hermes-server",
+  "version": "0.20.0",
+  "type": "module",
+  "private": true
+}

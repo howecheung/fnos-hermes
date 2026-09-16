@@ -1,0 +1,16 @@
+appname               = fnos-hermes
+version               = 0.21.3-1
+install_dep_apps      = nodejs_v24
+display_name          = "fnOS Hermes"
+icon                  = ICON.PNG
+desc                  = "fnOS 原生安装的 Hermes Agent（Nous Research 开源 AI Agent）第三方打包版，跟随官方上游源码构建，可与官方 hermes-agent 包并存运行（独立端口/数据目录）。<br/><br/><strong>核心能力：</strong><br/>• 多模型支持：OpenAI、Anthropic、Kimi、MiniMax、通义百炼、DeepSeek 等<br/>• 消息平台：微信ClawBot、QQ Bot、飞书、WhatsApp、Telegram 等<br/>• 定时任务：自然语言描述的自动化调度<br/>• 持久记忆：跨会话学习和技能进化<br/>• MCP 扩展：连接 GitHub 等外部工具<br/><br/><strong>本包特性：</strong><br/>• 内置官方源码，安装时 editable 安装（官方 0.20.0 起停发 PyPI wheel）<br/>• 独立数据目录与端口（Web 8660 / Gateway 8743 / Dashboard 9220），不干扰其他 Hermes 实例<br/><br/><strong>免责声明：</strong><br/>本应用为社区第三方打包，与 Nous Research 官方无隶属关系；不对 Hermes Agent 软件本身的安全性、稳定性作任何保证，使用风险由用户自行承担。"
+platform              = all
+source                = thirdparty
+maintainer            = "Nous Research"
+maintainer_url        = https://github.com/NousResearch/hermes-agent
+distributor           = howecheung
+distributor_url       = https://github.com/howecheung/fnos-hermes
+desktop_uidir         = ui
+desktop_applaunchname = fnos-hermes.Application
+micro_app             = true
+checksum              =

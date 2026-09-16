@@ -1,0 +1,7 @@
+{
+    "defaults": {
+        "run-as": "package"
+    },
+    "username": "fnos-hermes",
+    "groupname": "fnos-hermes"
+}

@@ -1,0 +1,14 @@
+{
+    "data-share": {
+        "shares": [
+            {
+                "name": "fnos-hermes"
+            }
+        ]
+    },
+    "usr-local-linker": {
+        "bin": [
+            "bin/fnos-hermes"
+        ]
+    }
+}

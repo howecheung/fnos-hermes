@@ -1,0 +1,9 @@
+#!/bin/bash
+
+"${TRIM_APPDEST}/cmd/main" stop 2>/dev/null || true
+
+pkill -f "fnos-hermes.*monitor.js" 2>/dev/null || true
+pkill -f "fnos-hermes/.+gateway" 2>/dev/null || true
+pkill -f "fnos-hermes/.+dashboard" 2>/dev/null || true
+
+exit 0

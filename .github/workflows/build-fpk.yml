@@ -1,0 +1,196 @@
+name: Build fnOS FPK
+
+# 构建 fnOS Hermes（appname: fnos-hermes）的 .fpk 安装包。
+#
+# 关键点（上游 0.20.0 起）：
+#   - 官方停止 PyPI 分发，必须内置完整源码 → 本工作流在 CI 里 clone 官方指定 tag
+#     到 app/hermes-src，安装时由 cmd/install_callback 执行 `uv pip install -e hermes-src[all]`
+#   - hermes_cli/web_dist 与 ui-tui/dist/entry.js 被上游 .gitignore 忽略，必须现场构建
+#     （NAS 上 npm 构建不可靠，所以放在 GitHub runner 上做）
+#
+# 触发方式：
+#   - Actions 页面手动 workflow_dispatch（填官方 tag 与目标版本号）
+#   - 推送 v* tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      hermes_tag:
+        description: '官方 hermes-agent tag（如 v2026.9.14）'
+        required: true
+        default: 'v2026.9.14'
+      pkg_version:
+        description: '写入 manifest 的包版本（如 0.21.3-1）'
+        required: true
+        default: '0.21.3-1'
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: fnos-hermes
+  UPSTREAM_REPO: NousResearch/hermes-agent
+  MANIFEST_FILE: manifest
+  VERSION_ENV: config/bootstrap/hermes-version.env
+
+jobs:
+  build-fpk:
+    runs-on: ubuntu-latest
+    outputs:
+      fpk_name: ${{ steps.build.outputs.fpks }}
+      version: ${{ steps.target_version.outputs.target_version }}
+
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+
+      # ── 1. 解析目标版本 ────────────────────────────────────────────────
+      - name: Determine hermes tag and package version
+        id: target_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            HERMES_TAG="${{ github.event.inputs.hermes_tag }}"
+            PKG_VERSION="${{ github.event.inputs.pkg_version }}"
+          else
+            # tag 触发：从 config/bootstrap/hermes-version.env 读 tag
+            HERMES_TAG="${{ github.ref_name }}"
+            PKG_VERSION="$(grep '^PKG_VERSION=' "$VERSION_ENV" | cut -d= -f2 | tr -d ' ')"
+          fi
+          [ -n "$HERMES_TAG" ] || { echo "::error::hermes_tag 为空"; exit 1; }
+          [ -n "$PKG_VERSION" ] || { echo "::error::pkg_version 为空"; exit 1; }
+          echo "hermes_tag=$HERMES_TAG" >> $GITHUB_OUTPUT
+          echo "pkg_version=$PKG_VERSION" >> $GITHUB_OUTPUT
+          echo "官方源码 tag：$HERMES_TAG ／ 包版本：$PKG_VERSION"
+
+      # ── 2. 拉取官方源码到 app/hermes-src（该目录被 .gitignore 排除，由本步骤补齐）──
+      - name: Fetch upstream hermes-agent source
+        run: |
+          HERMES_TAG="${{ steps.target_version.outputs.hermes_tag }}"
+          rm -rf app/hermes-src
+          git clone --depth 1 --branch "$HERMES_TAG" \
+            "https://github.com/${UPSTREAM_REPO}.git" app/hermes-src
+          rm -rf app/hermes-src/.git
+          UP_VER="$(grep -m1 '^version' app/hermes-src/pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+          echo "上游 pyproject 版本：$UP_VER"
+          echo "UPSTREAM_VERSION=$UP_VER" >> $GITHUB_ENV
+          # 源码树瘦身（TUI 之外的大目录/测试资源不必进包）
+          rm -rf app/hermes-src/.github app/hermes-src/tests/fixtures 2>/dev/null || true
+          du -sh app/hermes-src
+
+      # ── 3. 预构建前端：web_dist（Vite）＋ TUI bundle（entry.js）────────
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Prebuild hermes web_dist and TUI bundle
+        run: |
+          cd app/hermes-src
+          npm install --workspace web --no-audit --no-fund
+          npm install --workspace ui-tui --no-audit --no-fund
+          npm run build --workspace web
+          npm run build:ink --workspace ui-tui || true
+          npm run build --workspace ui-tui
+          rm -rf node_modules web/node_modules ui-tui/node_modules ui-tui/packages/hermes-ink/node_modules apps/shared/node_modules
+          echo "--- 构建产物校验 ---"
+          test -f hermes_cli/web_dist/index.html || { echo "::error::web_dist 未生成"; exit 1; }
+          test -f ui-tui/dist/entry.js || { echo "::error::ui-tui/dist/entry.js 未生成"; exit 1; }
+          ls -la hermes_cli/web_dist | head -5
+          ls -la ui-tui/dist
+          find . -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+
+      # ── 4. 写版本：manifest 包版本 + 内置源码版本 ─────────────────────
+      - name: Update versions
+        run: |
+          PKG_VERSION="${{ steps.target_version.outputs.pkg_version }}"
+          sed -i -E "s/^version[[:space:]]*=.*/version               = ${PKG_VERSION}/" "$MANIFEST_FILE"
+          python3 - "$VERSION_ENV" "$UPSTREAM_VERSION" "${{ steps.target_version.outputs.hermes_tag }}" <<'PY'
+          import re, sys
+          path, ver, tag = sys.argv[1], sys.argv[2], sys.argv[3]
+          txt = open(path).read()
+          txt = re.sub(r'^HERMES_VERSION=.*$', f'HERMES_VERSION={ver}', txt, flags=re.M)
+          txt = re.sub(r'^HERMES_TAG=.*$', f'HERMES_TAG={tag}', txt, flags=re.M)
+          if 'HERMES_TAG=' not in txt:
+              txt = txt.rstrip() + f"\nHERMES_TAG={tag}\n"
+          open(path, 'w').write(txt)
+          PY
+          grep -E '^version' "$MANIFEST_FILE"
+          grep -E '^HERMES_(VERSION|TAG)=' "$VERSION_ENV"
+
+      # ─ 5. 打包 ────────────────────────────────────────────────────────
+      - name: Install fnpack
+        run: |
+          curl -fsSL "https://static2.fnnas.com/fnpack/fnpack-1.0.4-linux-amd64" -o fnpack
+          chmod +x fnpack
+          mv fnpack /usr/local/bin/
+          fnpack || true
+
+      - name: Build FPK
+        id: build
+        run: |
+          mkdir -p dist
+          fnpack build --directory "$GITHUB_WORKSPACE" || { echo "::error:: fnpack 打包失败"; exit 1; }
+          VERSION="${{ steps.target_version.outputs.pkg_version }}"
+          TARGET_NAME="fnos-hermes_v${VERSION}.fpk"
+          mv "${APP_NAME}.fpk" "dist/${TARGET_NAME}"
+          SIZE=$(du -h "dist/${TARGET_NAME}" | cut -f1)
+          echo "打包成功：${TARGET_NAME} (${SIZE})"
+          echo "fpks=${TARGET_NAME}" >> $GITHUB_OUTPUT
+          echo "size=${SIZE}" >> $GITHUB_OUTPUT
+
+      # 追加小写 icon.png（fnpack 只收大写 ICON.PNG，部分 fnOS 界面找小写）
+      - name: Append lowercase icon to fpk
+        run: |
+          VERSION="${{ steps.target_version.outputs.pkg_version }}"
+          FPK="dist/fnos-hermes_v${VERSION}.fpk"
+          [ -f icon.png ] || cp ICON.PNG icon.png
+          WORKDIR=$(mktemp -d)
+          tar -xzf "$FPK" -C "$WORKDIR"
+          cp icon.png "$WORKDIR/icon.png"
+          tar -czf "$FPK" --owner=0 --group=0 -C "$WORKDIR" $(ls -A "$WORKDIR")
+          rm -rf "$WORKDIR"
+          tar -tzf "$FPK" | grep -i icon
+
+      # ── 6. 发布 ────────────────────────────────────────────────────────
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.target_version.outputs.pkg_version }}"
+          TAG="v${VERSION}"
+          FPK="dist/fnos-hermes_v${VERSION}.fpk"
+          cat > release_body.md <<EOF
+          **fnOS Hermes** \`${VERSION}\` — 打包自官方 [${UPSTREAM_REPO}](https://github.com/${UPSTREAM_REPO}) tag \`${{ steps.target_version.outputs.hermes_tag }}\`（源码版本 ${UPSTREAM_VERSION}）
+
+          - 安装包：\`fnos-hermes_v${VERSION}.fpk\`
+          - 独立端口：Web 8660 / Gateway 8743 / Dashboard 9220（可与官方 hermes-agent 包并存）
+          - 数据目录：\`/vol1/@apphome/fnos-hermes/data\`
+
+          *Commit: ${{ github.sha }}*
+          EOF
+          gh release create "$TAG" "$FPK" --title "fnOS Hermes v${VERSION}" --notes-file release_body.md --latest=false || \
+          gh release upload "$TAG" "$FPK" --clobber
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fnos-hermes-fpk
+          path: dist/*.fpk
+          retention-days: 30
+
+      - name: Summary
+        run: |
+          {
+            echo "### ✅ 构建完成"
+            echo ""
+            echo "| 项目 | 值 |"
+            echo "|------|-----|"
+            echo "| 官方 tag | ${{ steps.target_version.outputs.hermes_tag }} |"
+            echo "| 源码版本 | ${UPSTREAM_VERSION} |"
+            echo "| 包版本 | ${{ steps.target_version.outputs.pkg_version }} |"
+            echo "| FPK | fnos-hermes_v${{ steps.target_version.outputs.pkg_version }}.fpk |"
+            echo "| 大小 | ${{ steps.build.outputs.size }} |"
+          } >> $GITHUB_STEP_SUMMARY
