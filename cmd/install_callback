@@ -568,15 +568,15 @@ if [ -n "${TRIM_USERNAME:-}" ]; then
     # 旧版 sudoers 可能只有 cp/psql（缺 chown）→ 内容不完整必须重写（含 chown 才算完整）
     if [ ! -f "${_SUDOERS_FILE}" ] || ! grep -q 'chown' "${_SUDOERS_FILE}" 2>/dev/null; then
         log_msg ">>> 写入 sudoers 授权（${_SUDOERS_FILE}）..."
-        printf 'fnos-hermes ALL=(root) NOPASSWD: /bin/cp, /usr/bin/cp, /bin/chown, /usr/bin/chown, /usr/bin/sudo -u postgres /usr/bin/psql -d appcenter *\n' > /tmp/fnos-fnos-fnos-hermes-appcenter-sudoers
-        chmod 440 /tmp/fnos-fnos-fnos-hermes-appcenter-sudoers
-        if cp /tmp/fnos-fnos-fnos-hermes-appcenter-sudoers "${_SUDOERS_FILE}" 2>>"${TRIM_PKGVAR}/info.log"; then
+        printf 'fnos-hermes ALL=(root) NOPASSWD: /bin/cp, /usr/bin/cp, /bin/chown, /usr/bin/chown, /usr/bin/sudo -u postgres /usr/bin/psql -d appcenter *\n' > /tmp/fnos-hermes-appcenter-sudoers
+        chmod 440 /tmp/fnos-hermes-appcenter-sudoers
+        if cp /tmp/fnos-hermes-appcenter-sudoers "${_SUDOERS_FILE}" 2>>"${TRIM_PKGVAR}/info.log"; then
             chmod 440 "${_SUDOERS_FILE}" 2>/dev/null || true
             log_msg "sudoers 写入成功"
         else
             log_msg "sudoers 写入失败（请手动配置 /etc/sudoers.d/hermes-appcenter）"
         fi
-        rm -f /tmp/fnos-fnos-fnos-hermes-appcenter-sudoers
+        rm -f /tmp/fnos-hermes-appcenter-sudoers
     else
         log_msg "sudoers 已存在且完整，跳过"
     fi
