@@ -88,18 +88,14 @@ bash tools/publish-release.sh             # 幂等发 GitHub Release
 | 2 | 官方自 v0.20.0 停发 PyPI wheel | 源码内置 + `uv pip install -e "hermes-src[all,voice]"` |
 | 3 | 上游 gitignore 了前端产物 | 打包前现场构建；参照仓库的 CI 就缺这一步 |
 | 4 | 下载通道速度差异极大 | 每次测速再选（实测：codeload 200KB/s、npmjs 180KB/s、git clone 55KB/s、npmmirror 347B/s 不可用） |
-| 5 | fnpack 缺 `ICON.PNG` 直接失败 | 脚本自愈 `[ -f ICON.PNG ] \|\| cp ICON_256.PNG ICON.PNG`，并把图标提交进库 |
-| 6 | fnpack 只收**大写**图标 | 小写 `icon.png` 出包后追加进 `app.tgz` 再打回 |
-| 7 | `usr-local-linker` 收相对 `bin/xxx`，目标必须真实存在 | venv 里 `bin/hermes`（pip console script）**绝不能改名** |
-| 8 | 重叠 sed 造出双重前缀（`/tmp/fnos-fnos-fnos-hermes-…`） | 改完与上游原文全树 diff；sed BRE 里 `\.` 是字面点、`\+` 是字面量，写错会**静默不匹配** |
-| 9 | 参照仓库 `cmd/*`、`app/bin/*` 常是 100644 | 打包前 `chmod 755` |
-| 10 | `ui/images` 用下划线 + 尺寸精确 | `icon_64.png`(64)、`icon_256.png`(256)；`ui/config` 写 `"icon": "images/icon_{0}.png"` |
-| 11 | 安装布局易搞错 | `app.tgz` 内容**直接解到 `/vol1/@appcenter/<appname>/`**（与 `cmd/` 同级），不是套一层 `app/` |
-| 12 | **图标不显示 ≠ 图标规格错** | 详情页图标 URL 就是原样返回 `/var/apps/<app>/ICON.PNG`；256×256 的应用也正常。真因是**客户端图片缓存**（手机飞牛 App 会一直显示旧灰占位图，清缓存即恢复）→ 验证一律用**浏览器**开网页版 |
-| 13 | 「请先卸载应用中心版本…」提示是**误导文案** | 真实判定是「已装同版本或更高版本」，看 `/var/apps/<appname>/manifest` 的 `version` 即可，**别卸载** |
-| 14 | trim-cli 装 fpk 报 `requires license confirmation` / wizard 参数 | 加 `--accept-license --custom-parameters '[]' --volume-id 1 --yes` |
-| 15 | PAT 缺 `workflow` scope 推不了 `.github/workflows/**` | 工作流暂存 `tools/actions/build-fpk.yml`，补 scope 后 `git mv` 回去 |
-| 16 | 交付副本权限 | 拷贝后 `chmod 644` + `stat -c '%A %U:%G %s %n'` 复核（`ls` 显示 `----------` 是 TrimACL 假象） |
+| 5 | `usr-local-linker` 收相对 `bin/xxx`，目标必须真实存在 | venv 里 `bin/hermes`（pip console script）**绝不能改名** |
+| 6 | 重叠 sed 造出双重前缀（`/tmp/fnos-fnos-fnos-hermes-…`） | 改完与上游原文全树 diff；sed BRE 里 `\.` 是字面点、`\+` 是字面量，写错会**静默不匹配** |
+| 7 | 参照仓库 `cmd/*`、`app/bin/*` 常是 100644 | 打包前 `chmod 755` |
+| 8 | 安装布局易搞错 | `app.tgz` 内容**直接解到 `/vol1/@appcenter/<appname>/`**（与 `cmd/` 同级），不是套一层 `app/` |
+| 9 | 「请先卸载应用中心版本…」提示是**误导文案** | 真实判定是「已装同版本或更高版本」，看 `/var/apps/<appname>/manifest` 的 `version` 即可，**别卸载** |
+| 10 | trim-cli 装 fpk 报 `requires license confirmation` / wizard 参数 | 加 `--accept-license --custom-parameters '[]' --volume-id 1 --yes` |
+| 11 | PAT 缺 `workflow` scope 推不了 `.github/workflows/**` | 工作流暂存 `tools/actions/build-fpk.yml`，补 scope 后 `git mv` 回去 |
+| 12 | 交付副本权限 | 拷贝后 `chmod 644` + `stat -c '%A %U:%G %s %n'` 复核（`ls` 显示 `----------` 是 TrimACL 假象） |
 
 ## 目录结构
 
