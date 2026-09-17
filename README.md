@@ -51,15 +51,28 @@ checkout 本仓库
 外层外壳（`cmd/*`、`app/server`、`app/ui`）咬住内核的 6 处接口与布局，所以每跟一次上游都要过一遍「兼容性考试」：
 
 ```bash
-# 1) 改版本坐标，拉新版源码并重建（本机构建，3–5 分钟）
+# 1) 改版本坐标（就这三行）
 vim config/bootstrap/hermes-version.env      # HERMES_TAG / HERMES_VERSION / PKG_VERSION
-bash tools/build-local.sh
 
-# 2) 判卷：外壳与新版内核是否还对得上（1 秒，绿了才能发版）
+# 2) 构建：拉源码 → 建前端 → 改写身份 → 打包 → 出厂自检，一条命令到底
+bash tools/build-local.sh        # 冷机构建约 100 秒；同 tag 重打约 30 秒
+
+# 3) 判卷：外壳与新版内核是否还对得上（1 秒，绿了才能发版）
 bash tools/check-upstream-compat.sh
-
-# 3) 出包后按验证清单核对（结构/端口/脚本权限/无误杀残留），再发 Release
 ```
+
+构建末尾会自动跑 `tools/verify-fpk.py`（30 项：manifest 与版本坐标、脚本可执行位、`bin/` 指向、前端产物、端口/用户/socket/共享目录隔离、无重复前缀残留，以及**清理进程的模式会不会误杀主实例**）——最后一项是拿机器上正在跑的进程实测的，红了说明这个包会杀掉你的 `hermes-agent`，绝不能发。手动复核随时可跑：`python3 tools/verify-fpk.py [某个.fpk]`。
+
+**构建缓存**（按 tag 命名，换 tag 自动失效；可随时删）：
+
+| 缓存 | 位置 | 省掉 |
+|---|---|---|
+| 官方源码包 | `tools/.cache/hermes-src-<tag>.tgz`（68MB） | 每次重下 68MB |
+| npm 依赖 | `app/hermes-src/node_modules`（368MB，**不进包**） | 每次 `npm install`（数分钟） |
+| 前端产物 | `app/hermes-src/hermes_cli/web_dist`、`ui-tui/dist` | 同 tag 重打时省一次 Vite 构建（换 tag 必重建） |
+| 工具 | `tools/.cache/fnpack`、`tools/.cache/npm-compat` | 工具本身重复下载 |
+
+实测（v0.21.3）：冷构建 **99s**、同 tag 常规重建 **27s**、`--rebuild-src`（重解源码但复用依赖与产物）**35s**。
 
 **兼容性检查包含 6 节**：① CLI 入口名 ② 子命令 `gateway`/`dashboard` ③ 前端产物路径与 TUI bundle ④ 包名与运行时前提（Python / Node / npm engines）⑤ 数据面 `config.yaml` / `sessions/` / `state.db` ⑥ **结构指纹基线比对**。
 
