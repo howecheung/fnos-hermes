@@ -87,6 +87,14 @@ for pat in 'config\.yaml' 'sessions' 'state\.db'; do
 done
 
 printf '\n'
+head2 '6. 结构指纹基线对比（上游接口/布局有无改动）'
+if command -v python3 >/dev/null 2>&1 && [ -f tools/upstream-fingerprint.py ]; then
+    python3 tools/upstream-fingerprint.py --check --src "$SRC" || FAIL=1
+else
+    printf '  \033[33mINFO\033[0m 跳过（缺 python3 或 tools/upstream-fingerprint.py）\n'
+fi
+
+printf '\n'
 if [ "$FAIL" -eq 0 ]; then
     printf '\033[1;32m全部通过：外壳与内核 v%s 兼容，可以打包发版。\033[0m\n' "${VER:-?}"
 else

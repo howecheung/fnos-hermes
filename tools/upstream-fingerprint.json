@@ -1,0 +1,83 @@
+{
+ "facts": {
+  "artifact.ui_tui_entry": {
+   "kind": "S",
+   "value": "yes"
+  },
+  "artifact.web_dist": {
+   "kind": "S",
+   "value": "yes"
+  },
+  "hermes_cli.anchors": {
+   "kind": "L",
+   "value": "[\"config.py\", \"cron.py\", \"curator.py\", \"dashboard_auth\", \"doctor.py\", \"gateway.py\", \"local_runtime\", \"main.py\", \"model_catalog.py\", \"observability\", \"plugins_loader.py\", \"proxy\", \"pty_bridge.py\", \"sessions_cmd.py\", \"setup.py\", \"skills_hub.py\", \"subcommands\", \"update_cmd.py\", \"web_dist\", \"web_routers\", \"web_server.py\", \"web_server_dashboard.py\", \"web_server_gateway.py\", \"web_server_sessions.py\"]"
+  },
+  "info.hermes_cli.files": {
+   "kind": "I",
+   "value": "365"
+  },
+  "info.ui-tui.files": {
+   "kind": "I",
+   "value": "11"
+  },
+  "info.web.files": {
+   "kind": "I",
+   "value": "12"
+  },
+  "pyproject.extras": {
+   "kind": "L",
+   "value": "[\"acp\", \"all\", \"anthropic\", \"azure-identity\", \"bedrock\", \"computer-use\", \"cron\", \"daytona\", \"dev\", \"dingtalk\", \"edge-tts\", \"exa\", \"fal\", \"feishu\", \"firecrawl\", \"google\", \"google-chat\", \"hindsight\", \"homeassistant\", \"honcho\", \"matrix\", \"mcp\", \"mem0\", \"messaging\", \"mistral\", \"modal\", \"nemo-relay\", \"otlp\", \"parallel-web\", \"pty\", \"slack\", \"sms\", \"supermemory\", \"teams\", \"termux\", \"termux-all\", \"tts-premium\", \"vercel\", \"vertex\", \"vision\", \"voice\", \"wake\", \"web\", \"wecom\", \"youtube\"]"
+  },
+  "pyproject.name": {
+   "kind": "S",
+   "value": "hermes-agent"
+  },
+  "pyproject.requires-python": {
+   "kind": "R",
+   "value": ">=3.11,<3.14"
+  },
+  "pyproject.scripts": {
+   "kind": "L",
+   "value": "[\"hermes\", \"hermes-acp\", \"hermes-agent\"]"
+  },
+  "root.engines.node": {
+   "kind": "R",
+   "value": "^22.22.0 || ^24.11.0 || >=26.0.0"
+  },
+  "root.engines.npm": {
+   "kind": "R",
+   "value": "<11.10.0 || >=11.17.0"
+  },
+  "root.scripts": {
+   "kind": "L",
+   "value": "[\"audit:fix:root\", \"audit:fix:tui\", \"audit:fix:web\", \"audit:root\", \"audit:tui\", \"audit:web\", \"check\", \"fix\", \"install:desktop\", \"install:root\", \"install:tui\", \"install:web\", \"postinstall\"]"
+  },
+  "root.workspaces": {
+   "kind": "L",
+   "value": "[\"apps/*\", \"tests-js\", \"ui-tui\", \"ui-tui/packages/*\", \"web\"]"
+  },
+  "ui-tui.anchors": {
+   "kind": "L",
+   "value": "[\"dist\", \"package.json\", \"src\"]"
+  },
+  "ui-tui.scripts": {
+   "kind": "L",
+   "value": "[\"build\", \"build:ink\", \"check\", \"dev\", \"fix\", \"fmt\", \"lint\", \"lint:fix\", \"start\", \"test\", \"test:watch\", \"typecheck\", \"visual\"]"
+  },
+  "web.anchors": {
+   "kind": "L",
+   "value": "[\"index.html\", \"package.json\", \"public\", \"src\", \"vite.config.ts\"]"
+  },
+  "web.scripts": {
+   "kind": "L",
+   "value": "[\"build\", \"check\", \"dev\", \"fix\", \"lint\", \"lint:fix\", \"preview\", \"test\", \"typecheck\"]"
+  },
+  "web.vite.outDir": {
+   "kind": "S",
+   "value": "../hermes_cli/web_dist"
+  }
+ },
+ "generated_at": "2026-09-17T09:05:35+08:00",
+ "source": "app/hermes-src",
+ "version": "0.21.3"
+}

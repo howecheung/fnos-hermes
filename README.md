@@ -46,11 +46,32 @@ checkout 本仓库
   → 发布 Release（fnos-hermes_v<版本>.fpk）
 ```
 
-## 跟进上游新版本
+## 跟进上游新版本（升版本三步）
 
-1. 看官方 [releases](https://github.com/NousResearch/hermes-agent/releases) 拿到新 tag 与版本号
-2. 手动触发工作流，`hermes_tag=vYYYY.M.D`、`pkg_version=<源码版本>-1`
-3. 首次构建若失败，多半是上游前端构建方式变化（`web`/`ui-tui` workspace 的构建命令或产物路径），按报错调整 workflow 的 prebuild 步骤
+外层外壳（`cmd/*`、`app/server`、`app/ui`）咬住内核的 6 处接口与布局，所以每跟一次上游都要过一遍「兼容性考试」：
+
+```bash
+# 1) 改版本坐标，拉新版源码并重建（本机构建，3–5 分钟）
+vim config/bootstrap/hermes-version.env      # HERMES_TAG / HERMES_VERSION / PKG_VERSION
+bash tools/build-local.sh
+
+# 2) 判卷：外壳与新版内核是否还对得上（1 秒，绿了才能发版）
+bash tools/check-upstream-compat.sh
+
+# 3) 出包后按验证清单核对（结构/端口/脚本权限/无误杀残留），再发 Release
+```
+
+**兼容性检查包含 6 节**：① CLI 入口名 ② 子命令 `gateway`/`dashboard` ③ 前端产物路径与 TUI bundle ④ 包名与运行时前提（Python / Node / npm engines）⑤ 数据面 `config.yaml` / `sessions/` / `state.db` ⑥ **结构指纹基线比对**。
+
+结构指纹（`tools/upstream-fingerprint.py` + `tools/upstream-fingerprint.json`）记录内核的接口与布局事实：
+
+- **标量项**（包名、`requires-python`、vite `outDir`、产物存在性）：值变了 → FAIL
+- **列表项**（CLI 入口、extras、workspace 构建脚本名、外壳引用的顶层锚点）：少一项 → FAIL，多一项 → INFO（纯增量不用改外壳）
+- **参考项**（各目录文件数）：变化只提示，不拦
+
+确认新版真机跑通（装包并验证）后，用 `python3 tools/upstream-fingerprint.py --update` 把基线推进到新版本。
+
+> 什么时候需要动外壳：上游动**功能**（模型目录、prompt、工具、bug 修复）不用管；上游动**接口和布局**（CLI 入口/子命令、目录与产物路径、包名、数据面结构、运行前提）才要改。判据看上面第 6 节输出。
 
 ## 目录结构
 
@@ -66,6 +87,9 @@ app/bin/fnos-hermes           CLI 包装（等价于 venv 里的 hermes）
 app/hermes-src/               官方源码（CI 拉取，不入库）
 wizard/ preview/ ICON*.PNG    安装向导、预览图、图标
 tools/apply-identity.sh       应用身份改写脚本（把上游骨架改名为本包身份）
+tools/build-local.sh          本机构建入口（拉源码 → 前端预构建 → fnpack，含缓存复用）
+tools/check-upstream-compat.sh 升版本前的兼容性检查（6 节，红则不要发版）
+tools/upstream-fingerprint.py  结构指纹基线生成/比对（--update / --check）
 ```
 
 ## License
