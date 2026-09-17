@@ -7,7 +7,8 @@
 #   2. npm 预构建 hermes_cli/web_dist（Vite）+ ui-tui/dist/entry.js
 #   3. 清理 node_modules / __pycache__
 #   4. 写 manifest 版本
-#   5. 用 fnpack 出包，追加小写 icon.png，输出到 dist/
+#   5. 生成图标（tools/make-icons.py，ICON.PNG 必须 512×512）→ fnpack 出包 → 追加小写 icon.png → dist/
+#   6. 兼容性检查 + 出厂自检（tools/verify-fpk.py）
 #
 # 用法：bash tools/build-local.sh [--rebuild-src]
 #   --rebuild-src  强制重解官方源码（默认 tag 一致则复用；tarball 有缓存，不重复下载）
@@ -67,14 +68,32 @@ fi
 fetch_tarball() {
   mkdir -p "$CACHE_DIR"
   if [ -s "$TGZ" ] && [ "$(stat -c%s "$TGZ")" -gt 10000000 ]; then
-    echo "命中源码缓存 ${TGZ}（$(du -h "$TGZ" | cut -f1)）——跳过下载"
-    return 0
+    if gzip -t "$TGZ" 2>/dev/null; then
+      echo "命中源码缓存 ${TGZ}（$(du -h "$TGZ" | cut -f1)）——跳过下载（完整性已校验）"
+      return 0
+    fi
+    echo "缓存文件完整性校验失败（疑似半包），删除后重新下载"
+    rm -f "$TGZ"
   fi
   local url="https://codeload.github.com/NousResearch/hermes-agent/tar.gz/refs/tags/${HERMES_TAG}"
-  echo "下载 $url"
-  rm -f "$TGZ"
-  curl -fL --retry 3 --retry-delay 5 --no-progress-meter -o "$TGZ" "$url" || { rm -f "$TGZ"; return 1; }
-  echo "已缓存到 ${TGZ}（$(du -h "$TGZ" | cut -f1)，同 tag 再构建直接复用）"
+  echo "下载 $url （断点续传 + 最多 5 轮，慢链路不会前功尽弃）"
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    if curl -fL --retry 2 --retry-delay 5 --no-progress-meter -C - -o "${TGZ}.part" "$url"; then
+      if gzip -t "${TGZ}.part" 2>/dev/null; then          # 校验通过才认；半包绝不当成好缓存
+        mv "${TGZ}.part" "$TGZ"
+        echo "已缓存到 ${TGZ}（$(du -h "$TGZ" | cut -f1)，已校验，同 tag 再构建直接复用）"
+        return 0
+      fi
+      echo "第 ${attempt}/5 次下载完整性校验失败，丢弃重下…"
+      rm -f "${TGZ}.part"
+    else
+      echo "第 ${attempt}/5 次下载中断，续传重试…"
+    fi
+    sleep 3
+  done
+  rm -f "${TGZ}.part"
+  return 1
 }
 extract_src() {
   local keep d; keep="$(mktemp -d "${REPO_DIR}/../src-keep.XXXXXX")"
@@ -171,13 +190,45 @@ grep -E '^HERMES_(VERSION|TAG)=' config/bootstrap/hermes-version.env
 # ── 5. 打包（用干净暂存目录，避免 .git 进包）────────────────────────────────
 say "5/7 fnpack 打包"
 mkdir -p tools/.cache dist
-# 坑：fnpack 强制要求 manifest 的 icon 所指文件存在，而参照仓库漏提交了 ICON.PNG
-# （只有 ICON_256.PNG 和 icon.png，内容相同）→ 这里自愈补齐，避免打包中断。
-[ -f ICON.PNG ] || cp ICON_256.PNG ICON.PNG
+# 图标：每次构建都按 fnOS 规格重生成（幂等）。
+# 实测坑（2026-09-17）：应用中心「详情页」图标取自 ICON.PNG，必须 512×512；
+# 只有 256×256 时 fnOS 判为不合格 → 详情页 show 灰色包裹占位图（参照仓库漏提交 ICON.PNG 时同病）。
+ensure_icons() {
+  local py="" cand
+  for cand in "${MAKEICONS_PY:-}" "$(command -v python3 || true)" \
+              "${TRIM_PKGHOME:-/vol1/@apphome/hermes-agent}/data/venv/bin/python"; do
+    [ -n "$cand" ] && [ -x "$cand" ] && "$cand" -c "import PIL" >/dev/null 2>&1 && { py="$cand"; break; }
+  done
+  if [ -n "$py" ]; then
+    "$py" tools/make-icons.py
+  elif command -v uv >/dev/null 2>&1; then
+    uv run --with pillow python tools/make-icons.py
+  else
+    echo "提示：环境里没有带 Pillow 的 python，沿用仓库内已提交的图标文件（尺寸由出厂自检兜底）"
+  fi
+  # fnpack 强制要求 manifest 的 icon 所指文件存在
+  if [ ! -f ICON.PNG ]; then
+    echo "警告：ICON.PNG 缺失 → 用 ICON_256.PNG 兜底；此包应用中心会没有图标，出厂自检会 FAIL"
+    cp ICON_256.PNG ICON.PNG
+  fi
+  [ -f icon.png ] || cp ICON_256.PNG icon.png
+}
+ensure_icons
 if [ ! -x "$FNPACK" ]; then
-  echo "下载 fnpack ..."
-  curl -fsSL "https://static2.fnnas.com/fnpack/fnpack-1.0.4-linux-amd64" -o "$FNPACK"
-  chmod +x "$FNPACK"
+  mkdir -p "$(dirname "$FNPACK")"
+  echo "下载 fnpack → $FNPACK"
+  if curl -fL --retry 3 --retry-delay 5 --no-progress-meter \
+        "https://static2.fnnas.com/fnpack/fnpack-1.0.4-linux-amd64" -o "${FNPACK}.part" \
+     && [ "$(stat -c%s "${FNPACK}.part" 2>/dev/null || echo 0)" -gt 100000 ]; then
+    mv "${FNPACK}.part" "$FNPACK"; chmod +x "$FNPACK"
+  else
+    rm -f "${FNPACK}.part"
+    if command -v fnpack >/dev/null 2>&1; then
+      FNPACK="$(command -v fnpack)"; echo "下载失败 → 回退系统已装 fnpack: $FNPACK"
+    else
+      echo "fnpack 下载失败且系统无 fnpack；可手动放一个可执行文件到 $FNPACK"; exit 1
+    fi
+  fi
 fi
 STAGE="$(mktemp -d "${REPO_DIR}/../fpk-stage.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT

@@ -84,6 +84,37 @@ def main():
     for key in ("appname", "display_name", "desc", "distributor"):
         if "hermes-agent" in kv.get(key, "") and key != "desc":
             bad(f"manifest.{key} 里混入了 hermes-agent 身份：{kv.get(key)}")
+    # ---------- 1b. 图标规格（2026-09-17 真机教训：尺寸不对 = 应用中心没图标） ----------
+    def png_size(b):
+        if b[:8] != b"\x89PNG\r\n\x1a\n" or b[12:16] != b"IHDR":
+            return None
+        return int.from_bytes(b[16:20], "big"), int.from_bytes(b[20:24], "big")
+
+    def packed_png(name, want, minbytes=2000):
+        try:
+            data = fpk.extractfile(name).read()
+        except KeyError:
+            bad(f"包内缺 {name}（应用中心图标缺失）")
+            return None
+        got = png_size(data)
+        if got != want:
+            bad(f"{name} 尺寸 {got} ≠ {want}", "跑 tools/make-icons.py 重生成（尺寸必须精确）")
+            return None
+        if len(data) < minbytes:
+            bad(f"{name} 只有 {len(data)} bytes，疑似空白/占位图")
+            return None
+        ok(f"{name} {got[0]}×{got[1]}（{len(data)} bytes）")
+        return data
+
+    icon_main = packed_png("ICON.PNG", (512, 512))
+    packed_png("ICON_256.PNG", (256, 256))
+    if "icon.png" in names:
+        packed_png("icon.png", (256, 256))
+    # 包里的 ICON.PNG 必须就是仓库里那份（防止打出旧图标）
+    if icon_main is not None and os.path.isfile("ICON.PNG"):
+        same = hashlib.sha256(icon_main).hexdigest() == hashlib.sha256(open("ICON.PNG", "rb").read()).hexdigest()
+        (ok if same else bad)(f"包内 ICON.PNG 与仓库 ICON.PNG 同源" if same
+                              else "包内 ICON.PNG 与仓库 ICON.PNG 不一致（打包前未刷新图标）")
     print(f"  \033[32mPASS\033[0m 图标文件：{[n for n in names if n.lower().endswith(('.png', '.jpg'))]}")
 
     # ---------- 2. cmd/ 权限 ----------
@@ -108,6 +139,50 @@ def main():
             return app.getmember(p).size
         except KeyError:
             return 0
+
+    # 桌面/UI 入口图标：尺寸必须精确，且 ui/config 声明的路径要真能落到文件
+    def png_size2(b):
+        if b[:8] != b"\x89PNG\r\n\x1a\n" or b[12:16] != b"IHDR":
+            return None
+        return int.from_bytes(b[16:20], "big"), int.from_bytes(b[20:24], "big")
+
+    for p, want in [("ui/images/icon_64.png", (64, 64)), ("ui/images/icon_256.png", (256, 256))]:
+        if not have(p):
+            bad(f"{p} 缺失")
+            continue
+        got = png_size2(app.extractfile(p).read())
+        (ok if got == want else bad)(
+            f"{p} {got[0]}×{got[1]}" if got == want else f"{p} 尺寸 {got} ≠ {want}")
+
+    def find_icon_tpl(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                if k == "icon" and isinstance(v, str) and v:
+                    return v
+                r = find_icon_tpl(v)
+                if r:
+                    return r
+        elif isinstance(o, list):
+            for v in o:
+                r = find_icon_tpl(v)
+                if r:
+                    return r
+        return ""
+
+    try:
+        import json as _json
+        tpl = find_icon_tpl(_json.loads(app.extractfile("ui/config").read().decode("utf-8")))
+
+        def resolves(p):
+            # ui/config 里的路径相对 ui/ 目录；app.tgz 里的条目是相对包根的
+            return p in anames or ("ui/" + p) in anames
+
+        miss = [tpl.replace("{0}", s) for s in ("64", "256") if not resolves(tpl.replace("{0}", s))] if tpl else ["<无模板>"]
+        (ok if tpl and not miss else bad)(
+            f"ui/config icon 模板 {tpl!r} 可解析到实际文件（ui/ 前缀）" if tpl and not miss
+            else f"ui/config icon 模板 {tpl!r} 指向的文件不存在：{miss}")
+    except Exception as e:  # noqa: BLE001
+        info(f"ui/config 未解析图标模板（{e}）")
 
     for p, label in [("bin/fnos-hermes", "CLI 包装 bin/fnos-hermes"),
                      ("bin/monitor-api", "Monitor API 客户端 bin/monitor-api")]:

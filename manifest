@@ -1,5 +1,5 @@
 appname               = fnos-hermes
-version               = 0.21.3-1
+version               = 0.21.3-2
 install_dep_apps      = nodejs_v24
 display_name          = "fnOS Hermes"
 icon                  = ICON.PNG

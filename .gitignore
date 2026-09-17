@@ -14,6 +14,8 @@ providers-state.yaml
 # Build artifacts
 dist/
 *.fpk
+# 构建缓存（源码 tarball / fnpack 二进制），体积大，绝不入库
+tools/.cache/
 
 # Logs
 *.log

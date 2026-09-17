@@ -2,7 +2,7 @@
   ".url": {
     "fnos-hermes.Application": {
       "title": "fnOS Hermes",
-      "icon": "images/{0}.png",
+      "icon": "images/icon_{0}.png",
       "type": "iframe",
       "protocol": "http",
       "gatewaySocket": "fnos-hermes.sock",
