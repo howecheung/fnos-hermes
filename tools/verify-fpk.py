@@ -303,8 +303,13 @@ def main():
         ev = dict(re.findall(r"^(\w+)=(.*)$", env, re.M))
         (ok if ev.get("PKG_VERSION") == ver else bad)(
             f"包版本一致：manifest {ver} ↔ hermes-version.env {ev.get('PKG_VERSION')}")
+        # 内置内核版本：官方自 v0.22.0 引入 hermes pm 后，源码 pyproject.toml 的
+        # version 固定为占位 "0.0.0"（真实版本由 PM 构建期注入，见 release notes
+        # "one package manager underneath everything"），故源码版本字段不再是可信来源。
+        # 改为核对 hermes-version.env 里人工声明的 HERMES_VERSION 与 PKG_VERSION 主版本一致。
         core = ev.get("HERMES_VERSION", "")
-        (ok if ver.split("-")[0] == core else bad)(f"内置内核版本 v{core} ↔ 包版本 {ver}")
+        (ok if ver.split("-")[0] == core else bad)(
+            f"内置内核版本 v{core} ↔ 包版本 {ver}（v0.22.0+ 读 env 声明，源码为占位 0.0.0）")
         (ok if ev.get("HERMES_TAG") else bad)(f"上游 tag = {ev.get('HERMES_TAG')}")
     except KeyError:
         bad("包内缺 config/bootstrap/hermes-version.env")

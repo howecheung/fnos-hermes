@@ -178,6 +178,10 @@ ls -la hermes_cli/web_dist | head -4
 ls -la ui-tui/dist | head -4
 cd "$REPO_DIR"
 
+# ─ 2b. 上游 v0.22.0 已知 bug 补丁（装包后必须生效，否则 dashboard 起不来）
+say "2b/7 打上游已知 bug 补丁"
+bash tools/patch-upstream-bugs.sh
+
 # ─ 3. 清理依赖 ────────────────────────────────────────────────────────────
 say "3/7 清理 __pycache__（node_modules 不再删除：打包时按名排除，留作下次复用）"
 find app/hermes-src -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
@@ -188,13 +192,23 @@ du -sh app/hermes-src
 # ── 4. 写版本 ─────────────────────────────────────────────────────────────
 say "4/7 写入版本号"
 sed -i -E "s/^version[[:space:]]*=.*/version               = ${PKG_VERSION}/" manifest
+# 内置内核版本号的来源：官方自 v0.22.0 引入 hermes pm 后，源码 pyproject.toml 的
+# version 固定为占位 "0.0.0"（真实版本由 PM 构建期注入），读它会得到无意义的 0.0.0。
+# 故 v0.22.0+ 以 hermes-version.env 里人工声明的 HERMES_VERSION 为准；
+# 旧版本（pyproject 带真实版本号）仍沿用读源码的旧行为。
+if [ "$UP_VER" = "0.0.0" ]; then
+  UP_VER="$(grep -m1 '^HERMES_VERSION=' config/bootstrap/hermes-version.env | cut -d= -f2)"
+  echo "上游源码版本为占位 0.0.0（v0.22.0+ hermes pm 构建期注入）→ 采用 env 声明: ${UP_VER}"
+fi
 python3 - "$UP_VER" <<'PY'
 import re, sys
 ver = sys.argv[1]
 p = "config/bootstrap/hermes-version.env"
 t = open(p).read()
-t = re.sub(r'^HERMES_VERSION=.*$', f'HERMES_VERSION={ver}', t, flags=re.M)
-open(p, 'w').write(t)
+# 仅在确有差异时写回：反复重跑构建时不要无谓地碰源文件（git diff 会一直脏）
+if not re.search(rf'^HERMES_VERSION={re.escape(ver)}$', t, flags=re.M):
+    t = re.sub(r'^HERMES_VERSION=.*$', f'HERMES_VERSION={ver}', t, flags=re.M)
+    open(p, 'w').write(t)
 PY
 grep -E '^(version|display_name|appname)' manifest
 grep -E '^HERMES_(VERSION|TAG)=' config/bootstrap/hermes-version.env

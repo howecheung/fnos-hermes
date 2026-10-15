@@ -48,7 +48,8 @@ function uiMerge(){
     //             连接器(并入通讯页：上部通讯+下部连接器) / 轨迹learning(并入知识库页)
     document.querySelectorAll('.nav-btn').forEach(function(b){
       var oc=b.getAttribute('onclick')||'';
-      if(oc.indexOf("'tunnel'")>=0||oc.indexOf("'flows'")>=0||oc.indexOf("'connectors'")>=0||oc.indexOf("'learning'")>=0){ b.remove(); }
+      if(oc.indexOf("'tunnel'")>=0||oc.indexOf("'flows'")>=0||oc.indexOf("'connectors'")>=0){ b.remove(); }
+      // 2026-10-09 用户要求：'learning'（轨迹）不再删除，恢复侧栏独立入口
     });
     var pt=document.getElementById('page-tunnel'); if(pt) pt.style.display='none';
     // 页面路由重定向：旧入口 → 合并后的目标页
@@ -56,7 +57,7 @@ function uiMerge(){
       var _orig=window.switchPage;
       window.switchPage=function(name){
         if(name==='tunnel'||name==='connectors') name='comm';   // 连接器 → 通讯（下部连接器区）
-        if(name==='learning') name='kb';                        // 轨迹 → 知识库（轨迹 Tab）
+        // if(name==='learning') name='kb';                        // 2026-10-09 停用：轨迹保留独立页
         if(name==='flows') name='extensions';                   // 工作流 → 扩展（原工作流 Tab）
         return _orig(name);
       };

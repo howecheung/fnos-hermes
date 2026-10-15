@@ -47,6 +47,21 @@ start_process() {
     log_msg "TRIM_APPDEST=${TRIM_APPDEST}"
     rm -f "${SOCKET_PATH}"
 
+    # 恢复预置 node/npm 到 hermes pm 工具目录（幂等、极快；升级不重跑
+    # install_callback 时靠这一步兜底）。缺 node → pm 恒判定前端过期 →
+    # dashboard 反复重建 → 9220 起不来。详见 tools/bootstrap-pm-tools.sh。
+    if [ -f "${TRIM_APPDEST}/tools/bootstrap-pm-tools.sh" ]; then
+        bash "${TRIM_APPDEST}/tools/bootstrap-pm-tools.sh" 2>> "${LOG_FILE}" || true
+    fi
+
+    # bootstrap 可能借用了包内 libatomic.so.1（系统缺该库时），monitor 与
+    # dashboard 都要继承 LD_LIBRARY_PATH，否则 pm 仍会判定前端过期。
+    if [ -f "${DATA_DIR}/.pm-tools-env" ]; then
+        # shellcheck disable=SC1091
+        . "${DATA_DIR}/.pm-tools-env"
+        log_msg "Loaded bundled lib path: ${LD_LIBRARY_PATH}"
+    fi
+
     HOME="${DATA_DIR}" HERMES_HOME="${DATA_DIR}" APP_DIR="${TRIM_APPDEST}" DATA_DIR="${DATA_DIR}" VAR_DIR="${VAR_DIR}" MONITOR_SOCKET_PATH="${SOCKET_PATH}" BASE_PATH="/app/fnos-hermes" PATH="${DATA_DIR}/venv/bin:/var/apps/nodejs_v24/target/bin:/var/apps/nodejs_v22/target/bin:/var/apps/nodejs_v20/target/bin:/var/apps/nodejs/target/bin:/usr/local/bin:/usr/bin:/bin" node "${MONITOR_SCRIPT}" >> ${LOG_FILE} 2>&1 &
     printf "%s" "$!" > ${PID_FILE}
 

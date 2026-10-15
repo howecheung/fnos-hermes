@@ -464,6 +464,21 @@ ensure_node
 ensure_tui_bundle
 
 # ---------------------------------------------------------------------------
+# 3.7 恢复预置的 node/npm 到 hermes pm 的工具目录（v0.22.0 起必需，非致命）
+#
+# v0.22.0 的 hermes pm 需要 node 才能核对前端产物；它自己下载会先探测
+# libatomic.so.1，缺则调 sudo apt-get —— fnOS 上应用用户无免密 sudo，装不上，
+# 于是 pm 卡死 → source_product_current() 恒 false → dashboard 反复重建 → 9220 起不来。
+# 预置件直接从包内恢复，免下载、免 libatomic。
+# ---------------------------------------------------------------------------
+if [ -f "${TRIM_APPDEST}/tools/bootstrap-pm-tools.sh" ]; then
+    log_msg ">>> 恢复预置 node/npm（hermes pm 工具目录）..."
+    bash "${TRIM_APPDEST}/tools/bootstrap-pm-tools.sh" 2>>"${LOG_FILE}" || true
+else
+    log_msg "WARNING: bootstrap-pm-tools.sh 缺失，hermes pm 可能装不出 node（dashboard 或不可用）"
+fi
+
+# ---------------------------------------------------------------------------
 # 4. 部署 prompts
 # ---------------------------------------------------------------------------
 if [ -d "${PROMPTS_SRC}" ]; then

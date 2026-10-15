@@ -1,0 +1,33 @@
+{
+  "packages": {
+    "node": {
+      "artifacts": [
+        "982aa24dd8be4c889c6a8ab337ddff3b0896645b20f4239356e80552c16277ee"
+      ],
+      "digest": "5189ac38a3d68fc46851f6a5abac2f20df4ed6c81dc36eaa808545508212e15c",
+      "entry": "node-26.7.0-linux-x64",
+      "env": {
+        "PATH": [
+          "{{store}}/node-26.7.0-linux-x64/bin"
+        ]
+      },
+      "target": "linux-x64",
+      "version": "26.7.0"
+    },
+    "npm": {
+      "artifacts": [
+        "5dbb86c71d07a1957f2e90734092dd6a58bdcd9ebc2d8d41ca1c6e6a21d364e1"
+      ],
+      "digest": "dd88d650b23a2decfae71bf8070f0201e428a2af17e14465fc4b56d0b32f115d",
+      "entry": "npm-12.0.2-linux-x64",
+      "env": {
+        "PATH": [
+          "{{store}}/npm-12.0.2-linux-x64/bin"
+        ]
+      },
+      "target": "linux-x64",
+      "version": "12.0.2"
+    }
+  },
+  "schema": 1
+}
