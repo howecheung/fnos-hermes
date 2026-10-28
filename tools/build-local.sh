@@ -178,9 +178,10 @@ ls -la hermes_cli/web_dist | head -4
 ls -la ui-tui/dist | head -4
 cd "$REPO_DIR"
 
-# ─ 2b. 上游 v0.22.0 已知 bug 补丁（装包后必须生效，否则 dashboard 起不来）
-say "2b/7 打上游已知 bug 补丁"
-bash tools/patch-upstream-bugs.sh
+# ─ 2b. 补丁已在第 141 行「应用本地内核 + 外壳补丁」处统一执行 ──────────
+# （tools/apply-kernel-patches.py 同时处理内核 mcp_tool.py 与外壳 monitor.js，
+#   失败即中止构建。此处不重复调用。）
+say "2b/7 补丁已在上一步应用，跳过"
 
 # ─ 3. 清理依赖 ────────────────────────────────────────────────────────────
 say "3/7 清理 __pycache__（node_modules 不再删除：打包时按名排除，留作下次复用）"
