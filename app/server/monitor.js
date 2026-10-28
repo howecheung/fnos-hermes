@@ -806,7 +806,20 @@ function _moduleLevelAutoRegisterMcp() {
     let st = {};
     try { if (existsSync(CONNECTORS_STATE)) st = JSON.parse(readFileSync(CONNECTORS_STATE, "utf8") || "{}"); } catch (e) {}
     let yml = "";
-    try { if (existsSync(HERMES_CONFIG)) yml = readFileSync(HERMES_CONFIG, "utf8"); } catch (e) {}
+    // ── patch: MCP 自愈写回转义幂等修复 · 读侧体积守卫 ──────────────────────────────
+    // config.yaml 若已被同类 bug 撑到几十上百 MB，读进来会吃掉大量内存且无法修复。
+    // 超过上限直接跳过本次自愈（不读不写），保住现有文件并留下日志线索。
+    const CONFIG_MAX_BYTES = 1024 * 1024;
+    try {
+      if (existsSync(HERMES_CONFIG)) {
+        const st = fs.statSync(HERMES_CONFIG);
+        if (st.size > CONFIG_MAX_BYTES) {
+          log("[MCP-BRIDGE] auto-register skipped: config.yaml 体积 " + st.size + " bytes 超过 1MB 上限，疑似写回放大 bug；本次不读不写");
+          return;
+        }
+        yml = readFileSync(HERMES_CONFIG, "utf8");
+      }
+    } catch (e) {}
     const nodeBin = resolvedNodeBin || "node";
     const connObj = {};
     CONNECTOR_CATALOG.forEach(function (cat) {
@@ -829,11 +842,29 @@ function _moduleLevelAutoRegisterMcp() {
     } else {
       block = "mcp_servers:\n" + names.map(function (n) {
         const e = merged[n];
-        const cmd = e.command || e.command_cmd || "";
+        // ── patch: MCP 自愈写回转义幂等修复 ──────────────────────────────
+        // 解析侧（_moduleParseMcpServers）用正则取的是 YAML 原文（含引号与反斜杠），
+        // 写回侧若直接再 JSON.stringify 一次，转义层数每轮 +1、字符数指数翻倍，
+        // 最终超过 V8 单字符串上限报 "Invalid string length"，config.yaml 涨到数百 MB，
+        // 拖垮网关启动（看门狗 exit 75 自杀重启）。
+        // 修法：① 写回前先解包「已是 JSON 字符串字面量」的值，保证幂等；
+        //      ② http 型条目（有 url、无 command）不再被塞空 command 行。
+        let cmd = e.command || e.command_cmd || "";
+        if (typeof cmd === "string" && cmd.length >= 2 && cmd.charAt(0) === '"' && cmd.charAt(cmd.length - 1) === '"') {
+          try { const decoded = JSON.parse(cmd); if (typeof decoded === "string") cmd = decoded; } catch (e) {}
+        }
+        const isHttp = !!e.url;
         const args = Array.isArray(e.args) ? e.args : [];
-        let out = "  " + n + ":\n    command: " + JSON.stringify(cmd) + "\n";
-        if (args.length) out += "    args:\n" + args.map(a => "      - " + JSON.stringify(a)).join("\n") + "\n";
-        Object.keys(e).forEach(k2 => {
+        let out = "  " + n + ":\n";
+        if (!isHttp || cmd !== "") out += "    command: " + JSON.stringify(cmd) + "\n";
+        if (args.length) out += "    args:\n" + args.map(function (a) {
+          let av = a;
+          if (typeof av === "string" && av.length >= 2 && av.charAt(0) === '"' && av.charAt(av.length - 1) === '"') {
+            try { const d = JSON.parse(av); if (typeof d === "string") av = d; } catch (e) {}
+          }
+          return "      - " + JSON.stringify(av);
+        }).join("\n") + "\n";
+        Object.keys(e).forEach(function (k2) {
           if (k2 === "command" || k2 === "args" || k2 === "command_cmd") return;
           out += "    " + k2 + ": " + e[k2] + "\n";
         });
@@ -841,6 +872,13 @@ function _moduleLevelAutoRegisterMcp() {
       }).join("\n");
     }
     yml = _replaceTopLevelKey(yml, "mcp_servers", block);
+    // ── patch: MCP 自愈写回转义幂等修复 · 写侧体积守卫 ──────────────────────────────
+    // 生成结果超过上限说明写回逻辑又出 bug（转义再次开始累积）。此时拒绝写入，
+    // 宁可让自愈不生效，也不能把 config.yaml 写爆拖垮网关。
+    if (Buffer.byteLength(yml, "utf8") > CONFIG_MAX_BYTES) {
+      log("[MCP-BRIDGE] auto-register aborted: 待写入 config.yaml 超过 1MB 上限，疑似写回放大 bug；已放弃本次写入");
+      return;
+    }
     try { writeFileSync(HERMES_CONFIG, yml, { mode: 0o644 }); } catch (e) {}
     const connCount = Object.keys(connObj).length;
     if (connCount > 0) log(`[MCP-BRIDGE] auto-register: ${connCount} 个网关连接器已同步到 config.yaml（共 ${names.length} 个 MCP server）`);

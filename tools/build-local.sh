@@ -131,13 +131,15 @@ fi
 UP_VER="$(grep -m1 '^version' app/hermes-src/pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')"
 echo "上游源码版本: ${UP_VER}"
 
-# ── 本地内核补丁 ──────────────────────────────────────────────────────────
-# 上游未修的 MCP HTTP 标志锁死 bug：ensure() 把「已尝试」标志无条件置位，首次符号导入
-# 一旦在 SDK 半初始化状态下失败，远程 HTTP 型 MCP 永久不可用（报错极具误导性）。
-# 补丁幂等；若上游结构变了导致锚点缺失，脚本返回非 0 → 这里中止构建，避免静默丢补丁。
-say "应用本地内核补丁"
-if ! python3 tools/apply-kernel-patches.py app/hermes-src; then
-    echo "内核补丁失败（锚点缺失，上游结构可能已变）——构建中止，请人工核对 tools/mcp_tool.py"
+# ── 本地内核 + 外壳补丁 ──────────────────────────────────────────────────
+# ① 上游未修的 MCP HTTP 标志锁死 bug：ensure() 把「已尝试」标志无条件置位，首次符号导入
+#    一旦在 SDK 半初始化状态下失败，远程 HTTP 型 MCP 永久不可用（报错极具误导性）。
+# ② 外壳 monitor.js 的 MCP 自愈写回转义放大：config.yaml 每 180 秒翻倍一次，
+#    14KB → 268MB → Hermes 报 YAML 格式错误 → 网关看门狗 exit 75 自杀重启 → 无限循环。
+# 补丁均幂等；若结构变了导致锚点缺失，脚本返回非 0 → 这里中止构建，避免静默丢补丁。
+say "应用本地内核 + 外壳补丁"
+if ! python3 tools/apply-kernel-patches.py app/hermes-src "${REPO_DIR}"; then
+    echo "补丁失败（锚点缺失，上游/外壳结构可能已变）——构建中止，请人工核对 tools/mcp_tool.py 与 app/server/monitor.js"
     exit 1
 fi
 

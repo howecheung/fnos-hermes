@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""对解包后的官方 Hermes 内核源码打本地补丁（幂等 + fail-fast）。
+"""对官方 Hermes 内核源码 + 本包外壳打本地补丁（幂等 + fail-fast）。
 
-背景（2026-10-27 实测）：
-    tools/mcp_tool.py 的 _ensure_mcp_sdk() 用 _MCP_SDK_IMPORT_ATTEMPTED 做「只试一次」，
-    但该标志是无条件置位的（在 and 分支之外）。若首次符号导入在 SDK 半初始化状态下失败，
-    _MCP_HTTP_AVAILABLE 会永远为 False，此后所有远程 HTTP 型 MCP 都报
+背景（2026-10-27 实测）：内核 tools/mcp_tool.py 的 _ensure_mcp_sdk() 用
+    _MCP_SDK_IMPORT_ATTEMPTED 做「只试一次」，但该标志是无条件置位的（在 and 分支之外）。
+    若首次符号导入在 SDK 半初始化状态下失败，_MCP_HTTP_AVAILABLE 会永远为 False，
+    此后所有远程 HTTP 型 MCP 都报
     「requires HTTP transport but mcp.client.streamable_http is not available」
     ——该报错极具误导性：真机上 HTTP 支持与远端服务均正常。
 
@@ -13,7 +13,14 @@
 
     上游若已修复（早退分支内已含 HTTP 补探测），本脚本会识别并跳过。
 
-用法：python3 tools/apply-kernel-patches.py [hermes_src_dir]
+背景（2026-10-28 事故）：外壳 app/server/monitor.js 的 MCP 自愈循环（每 180 秒一次）
+    解析与写回用了两套不一致的转义规则 —— 解析侧用正则取 YAML 原文（含引号与反斜杠），
+    写回侧对它再 JSON.stringify() 一次 → 转义层数每轮 +1、字符数指数翻倍。
+    config.yaml 从 14KB 涨到 268MB → Hermes 报 YAML 格式错误 → 网关启动看门狗
+    连续 6 次超时 → exit code 75 自杀重启 → supervisor 无限重拉。
+    详见 tools/patch-monitor-mcp-escape.py 的文档字符串。
+
+用法：python3 tools/apply-kernel-patches.py [hermes_src_dir] [repo_root]
 退出码：0 = 已打或已上游修复；1 = 锚点缺失（构建必须中止，避免静默丢补丁）。
 """
 import os
@@ -53,49 +60,71 @@ LOCK_NEW = """        _MCP_LOGGING_CALLBACK_SUPPORTED = _client_session_accepts(
 """
 
 
+def patch_monitor(repo_root: str) -> int:
+    """外壳 app/server/monitor.js 的 MCP 自愈写回转义放大补丁。
+
+    逻辑在 tools/patch-monitor-mcp-escape.py（独立脚本，含完整背景与实测数据）。
+    这里只做调用 + 失败即中止构建（锚点缺失意味着外壳结构已变，不能静默放过）。
+    """
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "patch-monitor-mcp-escape.py")
+    target = os.path.join(repo_root, "app", "server", "monitor.js")
+    if not os.path.isfile(script):
+        print(f"[shell-patch] 找不到补丁脚本 {script}，中止")
+        return 1
+    if not os.path.isfile(target):
+        print(f"[shell-patch] 找不到 {target}，中止")
+        return 1
+    import subprocess
+    rc = subprocess.call([sys.executable, script, target])
+    if rc != 0:
+        print("[shell-patch] monitor.js 补丁失败（锚点缺失）—— 构建中止，请人工核对 app/server/monitor.js")
+        return 1
+    return 0
+
+
 def main() -> int:
     root = sys.argv[1] if len(sys.argv) > 1 else "app/hermes-src"
+    repo_root = sys.argv[2] if len(sys.argv) > 2 else "."
     target = os.path.join(root, "tools", "mcp_tool.py")
     if not os.path.isfile(target):
         print(f"[kernel-patch] 找不到 {target}，跳过（可能不是 Hermes 源码树）")
-        return 0
+    else:
+        src = open(target, encoding="utf-8").read()
 
-    src = open(target, encoding="utf-8").read()
+        if MARK in src:
+            print("[kernel-patch] 已打过补丁，跳过")
+        else:
+            # 上游已修：早退分支里已经有 HTTP 补探测
+            if EARLY_OLD in src and "if not _MCP_HTTP_AVAILABLE:" in src.split(EARLY_OLD, 1)[1][:600]:
+                print("[kernel-patch] 上游已修复该问题，跳过")
+            else:
+                changed = False
+                for old, new, label in ((EARLY_OLD, EARLY_NEW, "早退分支"), (LOCK_OLD, LOCK_NEW, "锁内末尾")):
+                    if old not in src:
+                        if new.split(MARK)[0].split("\n")[0] in src:
+                            print(f"[kernel-patch] {label} 已含补丁，跳过该处")
+                            continue
+                        print(f"[kernel-patch] 错误：{label} 锚点未找到 —— 上游结构已变，需人工核对")
+                        return 1
+                    src = src.replace(old, new, 1)
+                    changed = True
+                    print(f"[kernel-patch] {label} 已打补丁")
 
-    if MARK in src:
-        print("[kernel-patch] 已打过补丁，跳过")
-        return 0
+                if not changed:
+                    print("[kernel-patch] 无改动")
+                else:
+                    open(target, "w", encoding="utf-8").write(src)
+                    try:
+                        py_compile.compile(target, doraise=True)
+                    except py_compile.PyCompileError as exc:
+                        print(f"[kernel-patch] 错误：补丁后语法校验失败，已回滚: {exc}")
+                        print("[kernel-patch] 请检查", target)
+                        return 1
+                    print("[kernel-patch] 完成，语法校验通过")
 
-    # 上游已修：早退分支里已经有 HTTP 补探测
-    if EARLY_OLD in src and "if not _MCP_HTTP_AVAILABLE:" in src.split(EARLY_OLD, 1)[1][:600]:
-        print("[kernel-patch] 上游已修复该问题，跳过")
-        return 0
-
-    changed = False
-    for old, new, label in ((EARLY_OLD, EARLY_NEW, "早退分支"), (LOCK_OLD, LOCK_NEW, "锁内末尾")):
-        if old not in src:
-            if new.split(MARK)[0].split("\n")[0] in src:
-                print(f"[kernel-patch] {label} 已含补丁，跳过该处")
-                continue
-            print(f"[kernel-patch] 错误：{label} 锚点未找到 —— 上游结构已变，需人工核对")
-            return 1
-        src = src.replace(old, new, 1)
-        changed = True
-        print(f"[kernel-patch] {label} 已打补丁")
-
-    if not changed:
-        print("[kernel-patch] 无改动")
-        return 0
-
-    open(target, "w", encoding="utf-8").write(src)
-    try:
-        py_compile.compile(target, doraise=True)
-    except py_compile.PyCompileError as exc:
-        print(f"[kernel-patch] 错误：补丁后语法校验失败，已回滚: {exc}")
-        git = os.path.join(os.path.dirname(target), "..", ".git")
-        print("[kernel-patch] 请检查", target)
+    # 外壳补丁（monitor.js）：与内核补丁同一次构建里应用，失败即中止。
+    if patch_monitor(repo_root) != 0:
         return 1
-    print("[kernel-patch] 完成，语法校验通过")
     return 0
 
 
