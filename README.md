@@ -169,6 +169,7 @@ bash tools/publish-release.sh             # 幂等发 GitHub Release
 | PAT 缺 `workflow` scope 推不了 `.github/workflows/**` | 工作流暂存 `tools/actions/build-fpk.yml`，补 scope 后 `git mv` 回去 |
 | 交付副本权限 | 拷贝后 `chmod 644` + `stat -c '%A %U:%G %s %n'` 复核（`ls` 显示 `----------` 是 TrimACL 假象） |
 | 远程 HTTP 型 MCP 全废（`requires HTTP transport but mcp.client.streamable_http is not available`） | 上游 `ensure_mcp_sdk()` 把「已尝试」标志无条件置位，首次符号导入一失败 HTTP 支持永久为 False；且世代环境缺 `mcp` extra。报错纯误导（真机远端正常）。**修法已回灌**：`tools/apply-kernel-patches.py` + `build-local.sh` 自动应用；ledger extras 必须含 `mcp` |
+| 装完 MCP 后 config.yaml 涨到几百 MB、网关反复自启（`formatting error at line NNN` / 看门狗 exit 75） | **本包外壳自己的 bug**（官方上游树里没有 monitor.js）：`server/monitor.js` 每 180 秒把 `mcp_servers` 写回 config.yaml，解析侧取 YAML 原文、写回侧再 `JSON.stringify` 一次 → 转义层数每轮 +1 → 14KB 涨到 268MB。**任何 MCP 条目都会触发**（http/stdio 实测均涨到 268MB 量级）。**修法已回灌**：`tools/patch-monitor-mcp-escape.py`，由 `tools/apply-kernel-patches.py` 统一调用（内核+外壳同一入口）。**升级后必查 `stat -c%s config.yaml`**：正常 14KB 量级，超 1MB 即复发。体检：`scripts/mcp_config_bloat_probe.sh` |
 
 > 上传本身的三个坑（`upload_url` / `--http1.1` / 校验返回码）见 [5.1](#51-三条铁律)。
 
