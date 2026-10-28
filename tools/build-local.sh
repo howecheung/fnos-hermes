@@ -131,6 +131,16 @@ fi
 UP_VER="$(grep -m1 '^version' app/hermes-src/pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')"
 echo "上游源码版本: ${UP_VER}"
 
+# ── 本地内核补丁 ──────────────────────────────────────────────────────────
+# 上游未修的 MCP HTTP 标志锁死 bug：ensure() 把「已尝试」标志无条件置位，首次符号导入
+# 一旦在 SDK 半初始化状态下失败，远程 HTTP 型 MCP 永久不可用（报错极具误导性）。
+# 补丁幂等；若上游结构变了导致锚点缺失，脚本返回非 0 → 这里中止构建，避免静默丢补丁。
+say "应用本地内核补丁"
+if ! python3 tools/apply-kernel-patches.py app/hermes-src; then
+    echo "内核补丁失败（锚点缺失，上游结构可能已变）——构建中止，请人工核对 tools/mcp_tool.py"
+    exit 1
+fi
+
 # ── 2. 预构建前端 ──────────────────────────────────────────────────────────
 say "2/7 预构建 web_dist + TUI bundle（首次约 5-15 分钟）"
 # npm 版本门：上游 package.json engines 明确排除 npm 11.10.0–11.16.x（该区间有已知问题），
