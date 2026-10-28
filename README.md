@@ -168,6 +168,7 @@ bash tools/publish-release.sh             # 幂等发 GitHub Release
 |---|---|
 | PAT 缺 `workflow` scope 推不了 `.github/workflows/**` | 工作流暂存 `tools/actions/build-fpk.yml`，补 scope 后 `git mv` 回去 |
 | 交付副本权限 | 拷贝后 `chmod 644` + `stat -c '%A %U:%G %s %n'` 复核（`ls` 显示 `----------` 是 TrimACL 假象） |
+| 远程 HTTP 型 MCP 全废（`requires HTTP transport but mcp.client.streamable_http is not available`） | 上游 `ensure_mcp_sdk()` 把「已尝试」标志无条件置位，首次符号导入一失败 HTTP 支持永久为 False；且世代环境缺 `mcp` extra。报错纯误导（真机远端正常）。**修法已回灌**：`tools/apply-kernel-patches.py` + `build-local.sh` 自动应用；ledger extras 必须含 `mcp` |
 
 > 上传本身的三个坑（`upload_url` / `--http1.1` / 校验返回码）见 [5.1](#51-三条铁律)。
 
